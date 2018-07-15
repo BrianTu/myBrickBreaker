@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+    <meta charset="utf-8" />
+    <title>BrickBreaker</title>
+    <style>
+        * { padding: 0px; margin: 0; }
+
+        canvas {
+          background: url("img/bg1.png");
+          display: block;
+          margin: 40px auto;
+          border: 3px solid white;
+        }
+
+        input[type = "checkbox"] {width: 1300px;}
+
+        body {
+          background-image: url("img/bg.png");
+        }
+
+        .slideContainer, .boxContainer {
+          color: white;
+        }
+        .boxContainer {
+          margin-left: 10px;
+          margin-top: 30px;
+        }
+        #checkBox {
+          position: relative;
+          left: 100px;
+        }
+        #startBtn {
+          color: #0099CC;
+          background: blue;
+          border: 2px solid #0099CC;
+          border-radius: 6px;  border: none;
+          color: white;
+          padding: 16px 32px;
+          text-align: center;
+          display: inline-block;
+          font-size: 16px;
+          margin: 4px 2px;
+          -webkit-transition-duration: 0.4s; /* Safari */
+          transition-duration: 0.4s;
+          cursor: pointer;
+          text-decoration: none;
+          text-transform: uppercase;
+          position: relative;
+          left: 635px;
+        }
+        #startBtn:hover {
+          background-color: #008CBA;
+          color: white;
+        }
+        .container {
+          text-align: center;
+          color: white;
+          font: 30px/1.5 Arial;
+        }
+        .powerup {
+          color: white;
+          text-align: center;
+          font: 20px/1 Arial;
+        }
+        h1 {
+          color: #0000ff;
+        }
+        #purple {
+          color: #993399;
+          font-weight: bold;
+        }
+        #green {
+          color: #33cc33;
+        }
+        #red {
+          color: red;
+        }
+    </style>
+
+</head>
+<body>
+
+<canvas id="myCanvas" width="820" height="400"></canvas>
+
+<button id="startBtn" onclick="start()">Play/Pause</button>
+
+<section>
+  <div class="container">
+    <p>Click here to play!</p>
+  </div>
+</section>
+<section>
+  <div class="powerup">
+    <h1>Power Ups</h1>
+    <p>There will be dropped items when you hit some of the bricks.</p>
+    <p>You must touch the item with your paddle in order to activate the power up.</p>
+    <p>Here is a list of the power ups:</p>
+    <p id="purple">Purple power up: Speed increase of the ball</p>
+    <p id="green">Green power up: Paddle length increase</p>
+    <p id="red">Red power up: Number of lives increase</p>
+  </div>
+</section>
+
+<div class="boxContainer">
+    <p>If you want aimbot, then click here!</p>
+    <input id ="checkBox" type = "checkbox" onclick = "clicked()">
+</div>
+
+<script>
+
+function start() {
+  togglePause();
+}
+
+//CLASSES
+class Ball {
+    constructor (xpos,ypos) {
+        this.x = xpos;
+        this.y = ypos;
+        this.ballRadius = 10;
+        this.dx = 2;
+        this.dy = 2;
+    }
+}
+
+class Paddle{
+    constructor () {
+        this.paddleHeight = 10;
+        this.paddleWidth = 75;
+        this.paddleX = (canvas.width-this.paddleWidth)/2;
+        this.speed = 10;
+    }
+}
+
+class Drop{
+    constructor(xpos,ypos) {
+        this.sy = 3;
+        this.x = xpos;
+        this.y = ypos;
+        this.height = 35;
+        this.width = 35;
+        this.speed = false;
+        this.wide = false;
+        this.life = false;
+        this.powerRadius;
+    }
+}
+
+//VARIABLES
+    //Canvas
+    var canvas = document.getElementById("myCanvas");
+    var ctx = canvas.getContext("2d");
+    //Ball
+    var ball = new Ball(canvas.width/2,canvas.height-30);
+    // Paddle
+    var paddle = new Paddle();
+    // Direction of the paddle
+    var rightPressed = false;
+    var leftPressed = false;
+    // Bricks
+    var brickRowCount = 5;
+    var brickColumnCount = 9;
+    var brickWidth = 75;
+    var brickHeight = 20;
+    var brickPadding = 10;
+    var brickOffsetTop = 30;
+    var brickOffsetLeft = 30;
+    var bricks = [];
+    for(c=0; c<brickColumnCount; c++) {
+        bricks[c] = [];
+        for(r=0; r<brickRowCount; r++) {
+            bricks[c][r] = { x: 0, y: 0, h: 3 };
+        }
+    }
+    var brickX = (c*(brickWidth+brickPadding))+brickOffsetLeft;
+    var brickY = (r*(brickHeight+brickPadding))+brickOffsetTop;
+    //Drop
+    var dropUp = [];
+    var dropUpcount = 0;
+    var speedDrop = false;
+    var wideDrop = false;
+    var lifeDrop = false;
+    // Score count
+    var score = 0;
+    // Life count
+    var lives = 3;
+    // Tracking
+    var tracking = false;
+    // Powerup
+    var powerup = false;
+    //Paused
+    var paused = true;
+    //sounds
+    var break_sound = new Audio("sounds/explosion.wav");
+    var paddle_hit = new Audio("sounds/pong.wav");
+    var paddle_move = new Audio("sounds/whoosh.wav")
+    var game_over = new Audio("sounds/game_over.wav");
+
+    //LISTERNERS
+    document.addEventListener("keydown", keyDownHandler, false);
+    document.addEventListener("keyup", keyUpHandler, false);
+    document.addEventListener("mousemove", mouseMoveHandler, false);
+    window.addEventListener('keydown', function (e) {
+      var key = e.keyCode;
+      if (key === 80) //code for 'p' key
+      {
+        togglePause();
+      }
+    });
+
+    //FUNCTIONS
+        /* This function is to make the paddle track the ball movement. */
+        function clicked() {
+            tracking = !tracking;
+        }
+
+        /*
+        This function increases the speed of the ball
+        */
+        function speedUp() {
+            if (ball.dx < 0 && ball.dy < 0) {
+                ball.dx -= 3;
+                ball.dy -= 3;
+            }
+            else if (ball.dx < 0 && ball.dy > 0) {
+                ball.dx -= 3;
+                ball.dy += 3;
+            }
+            else if (ball.dx > 0 && ball.dy < 0) {
+                ball.dx += 3;
+                ball.dy -= 3;
+            }
+            else {
+                ball.dx += 3;
+                ball.dy += 3;
+            }
+
+        }
+        /*
+        This function increases the width of the paddle
+        */
+        function paddleWidth() {
+            paddle.paddleWidth += 8;
+        }
+        /*
+        This function increases the number of lives by one
+        */
+        function addLife() {
+            lives += 1;
+        }
+
+    function mouseMoveHandler(e) {
+        var relativeX = e.clientX - canvas.offsetLeft;
+        if(relativeX > 0 && relativeX < canvas.width) {
+            paddle.paddleX = relativeX - padddle.paddleWidth/2;
+        }
+    }
+
+    /*
+    This function checks if the key code for the right and left button is pressed.
+    */
+    function keyDownHandler(e) {
+        if(e.keyCode == 39) {
+            rightPressed = true;
+            paddle_move.play();
+        }
+        else if(e.keyCode == 37) {
+            leftPressed = true;
+            paddle_move.play();
+        }
+    }
+    /*
+    This function checks if the key code for the right and left button is released.
+    */
+    function keyUpHandler(e) {
+        if(e.keyCode == 39) {
+            rightPressed = false;
+        }
+        else if(e.keyCode == 37) {
+            leftPressed = false;
+        }
+    }
+
+    /*
+    This function detects the collision of the ball hitting the bricks.
+    */
+    function collisionDetection() {
+        for (c = 0; c < brickColumnCount; c++) {
+            for (r = 0; r < brickRowCount; r++) {
+                var b = bricks[c][r];
+                if (b.h > 0) {
+                    if (ball.x > b.x && ball.x < b.x + brickWidth && ball.y > b.y && ball.y < b.y + brickHeight) {
+                        ball.dy = -1 * ball.dy;
+                        b.h = b.h - 1;
+                        score++;
+                        break_sound.play();
+                        //If the score is equal to the total amount of bricks,
+                        //meaning that there are no bricks left,
+                        //alets that you win.
+                        if (score == 3 * (brickRowCount * brickColumnCount)) {
+                            alert("YOU WIN, CONGRATULATIONS!");
+                            document.location.reload();
+                        }
+
+                        //Randomization of dropped power ups
+                        var rand = parseInt(Math.random() * 6);
+                        //rand = 2;
+                        if (rand == 2) {
+                            dropUp[dropUpcount] = new Drop(ball.x, ball.y);
+                            dropUpcount++;
+                            var randpower = parseInt(Math.random() * 4);
+                            //randpower = 1;
+                            if (randpower == 1) {
+                                speedDrop = true;
+                                wideDrop = false;
+                                lifeDrop = false;
+                            }
+                            else if (randpower == 2) {
+                                speedDrop = false;
+                                wideDrop = true;
+                                lifeDrop = false;
+                            }
+
+                            else if (randpower == 3) {
+                                speedDrop = false;
+                                wideDrop = false;
+                                lifeDrop = true;
+                            }
+
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    //DRAW FUNCTIONS
+    function drawLives() {
+        ctx.font = " bold 16px Arial";
+        ctx.fillStyle = "#0095DD";
+        ctx.fillText("Lives: "+lives, canvas.width-80, 20);
+    }
+    function drawScore() {
+        ctx.font = "bold 16px Arial";
+        ctx.fillStyle = "#0095DD";
+        ctx.fillText("Score: "+score, 8, 20);
+    }
+    function drawBall() {
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.ballRadius, 0, Math.PI*2);
+        ctx.fillStyle = "#0095DD";
+        ctx.fill();
+        ctx.closePath();
+    }
+    function drawPaddle() {
+        ctx.beginPath();
+        if (tracking) {
+            paddle.paddleX = ball.x-(paddle.paddleWidth/2);
+        }
+        ctx.rect(paddle.paddleX, canvas.height-paddle.paddleHeight, paddle.paddleWidth, paddle.paddleHeight);
+        ctx.fillStyle = "#0095DD";
+        ctx.fill();
+        ctx.closePath();
+    }
+
+    function drawBricks() {
+        for(c=0; c<brickColumnCount; c++) {
+            for(r=0; r<brickRowCount; r++) {
+                if(bricks[c][r].h > 0) {
+                    var brickX = (c*(brickWidth+brickPadding))+brickOffsetLeft;
+                    var brickY = (r*(brickHeight+brickPadding))+brickOffsetTop;
+                    bricks[c][r].x = brickX;
+                    bricks[c][r].y = brickY;
+                    ctx.beginPath();
+                    ctx.rect(brickX, brickY, brickWidth, brickHeight);
+                    //Different colours for each level of the bricks
+                    if (bricks[c][r].h == 3) {
+                        ctx.fillStyle = "#e60000";
+                    }
+                    else if (bricks[c][r].h == 2) {
+                        ctx.fillStyle = "#ff8533";
+                    }
+                    else if (bricks[c][r].h == 1) {
+                        ctx.fillStyle = "#ffb366";
+                    }
+                    ctx.fill();
+                    ctx.closePath();
+                }
+            }
+        }
+    }
+
+    /*
+    This function draws the drop item and sets the colour for each
+    of the three different power ups.
+    */
+    function drawDrop(){
+        for(i=0;i<dropUpcount;i++) {
+            ctx.beginPath();
+            //ctx.rect(dropUp[i].x, dropUp[i].y, 10, 20);
+            ctx.arc(dropUp[i].x, dropUp[i].y, 5, 0, Math.PI*2);
+            if(speedDrop == true) {
+                ctx.fillStyle = "#cc66ff";
+                dropUp[i].speed = true;
+            }
+            else if(wideDrop == true){
+                ctx.fillStyle = "#00b33c";
+                dropUp[i].wide = true;
+            }
+            else{
+                ctx.fillStyle = "#ff3300";
+                dropUp[i].life = true;
+            }
+            ctx.fill();
+            ctx.closePath();
+        }
+    }
+
+    /*
+    This function pauses and unpauses the variable "paused"
+    If paused is false, then now paused is true and prints a paused text in the game.
+    */
+    function togglePause() {
+      if (!paused) {
+          paused = true;
+          ctx.fillStyle = "white";
+          ctx.font = "bold 30px Arial";
+          ctx.fillText("PAUSED", (canvas.width / 2) - 60, (canvas.height / 2));
+          ctx.font = "10px Arial";
+          ctx.fillText("(Press p to resume)", (canvas.width / 2) - 42, (canvas.height /2) + 20);
+      }
+      else if (paused) {
+         paused = false;
+      }
+    }
+
+
+    function draw() {
+        if (!paused) {
+            // drawing code
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBricks();
+            drawBall();
+            drawDrop();
+            drawPaddle();
+            drawScore();
+            drawLives();
+            collisionDetection();
+            //Wall collision
+            if (ball.x + ball.dx > canvas.width - ball.ballRadius || ball.x + ball.dx < ball.ballRadius) {
+                ball.dx = -1 * ball.dx;
+            }
+
+            if (ball.y + ball.dy < ball.ballRadius) {
+                ball.dy = -ball.dy;
+            }
+            //Paddle Collision
+            else if (ball.y + ball.dy > canvas.height - ball.ballRadius) {
+              //Left side of paddle
+                if (ball.x > paddle.paddleX && ball.x < paddle.paddleX + (paddle.paddleWidth / 2)) {
+                    if (ball.dx > 0) {
+                        ball.dx = ball.dx * -1;
+                    }
+                    ball.dy = -ball.dy;
+                    paddle_hit.play();
+                }
+                //Right side of paddle
+                else if (ball.x >= paddle.paddleX + (paddle.paddleWidth / 2) && ball.x < paddle.paddleX + paddle.paddleWidth) {
+                    if (ball.dx < 0) {
+                        ball.dx = ball.dx * -1;
+                    }
+                    ball.dy = -ball.dy;
+                    paddle_hit.play();
+                }
+                //Game over
+                else {
+                    lives--;
+                    if (!lives) {
+                        game_over.play();
+                        alert("GAME OVER");
+                        document.location.reload();
+                    }
+                    //Continue ball movement
+                    else {
+                        ball.x = canvas.width / 2;
+                        ball.y = canvas.height - 30;
+                        ball.dx = 3;
+                        ball.dy = -3;
+                        paddle.paddleX = (canvas.width - paddle.paddleWidth) / 2;
+                    }
+                }
+            }
+
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            //If right pressed is true, move paddle to right
+            if (rightPressed) {
+                paddle.paddleX += 5;
+            }
+            //If left pressed is true, move paddle to left
+            else if (leftPressed) {
+                paddle.paddleX -= 5;
+            }
+            if (rightPressed && paddle.paddleX < canvas.width - paddle.paddleWidth) {
+                paddle.paddleX += 5;
+            }
+            else if (leftPressed && paddle.paddleX > 0) {
+                paddle.paddleX -= 5;
+            }
+            //Drop powerup from brick
+            for(n2 = 0; n2 < dropUpcount; n2++) {
+                dropUp[n2].y += dropUp[n2].sy;
+                //Checks collision of power up to paddle
+                if (dropUp[n2].x > paddle.paddleX && dropUp[n2].x < paddle.paddleX+paddle.paddleWidth && dropUp[n2].y < canvas.height && dropUp[n2].y > canvas.height - paddle.paddleHeight + 7) {
+                    if (dropUp[n2].speed == true) {
+                        speedUp();
+                    }
+                    else if (dropUp[n2].wide == true) {
+                        paddleWidth();
+                    }
+                    else if (dropUp[n2].life == true){
+                        addLife();
+                    }
+                }
+            }
+        }
+        requestAnimationFrame(draw);
+    }
+
+    draw();
+
+</script>
+</body>
+</html>
